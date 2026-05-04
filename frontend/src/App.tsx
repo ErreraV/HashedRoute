@@ -136,7 +136,7 @@ function App() {
           <p className="eyebrow">Hyperledger Fabric</p>
           <h1>HashedRoute</h1>
           <p className="sub">
-            Shipments anchored on-chain; API serves Org1 test-network identities.
+            Shipments anchored on-chain; each UI uses its configured Org MSP via the API.
           </p>
         </div>
         <button

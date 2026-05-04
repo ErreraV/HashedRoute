@@ -25,7 +25,6 @@ func main() {
 	defer gw.Close()
 
 	a := &api{
-		cfg:      cfg,
 		gw:       gw,
 		contract: fabricContract(cfg, gw),
 	}

@@ -1,5 +1,5 @@
 .PHONY: help compose-gen up down dev-api dev-web \
-	fabric-samples-precheck fabric-network fabric-clean-ledger fabric-deploy-chaincode fabric-seed-mock fabric-setup \
+	fabric-samples-precheck fabric-ensure-peer-orgs fabric-network fabric-network-up fabric-clean-ledger fabric-deploy-chaincode fabric-seed-mock fabric-setup \
 	fabric-install-hyperledger
 
 .DEFAULT_GOAL := help
@@ -28,6 +28,8 @@ FABRIC_CRYPTO_MOUNT ?= $(FABRIC_SAMPLES_ROOT)/test-network/organizations/peerOrg
 
 FABRIC_HOSTS_DEF ?= $(ROOT)/fabric-hosts.def
 
+FABRIC_TEST_NETWORK := $(FABRIC_SAMPLES_ROOT)/test-network
+
 export FABRIC_SAMPLES_ROOT
 export FABRIC_CRYPTO_MOUNT
 export FABRIC_HOSTS_DEF
@@ -49,14 +51,16 @@ help:
 	@echo ""
 	@echo "Fabric network + chaincode (README §1–2):"
 	@echo "  make fabric-setup   ./network.sh up createChannel + deploy delivery chaincode"
-	@echo "  make fabric-network       only bring up test-network + channel"
-	@echo "  make fabric-deploy-chaincode   only deploy (network must be up)"
+	@echo "  make fabric-network       ./network.sh up createChannel (first-time channel; see README if this errors)"
+	@echo "  make fabric-network-up    ./network.sh up only (nodes on host; channel must already exist)"
+	@echo "  make fabric-deploy-chaincode   only deploy (network must be up; MSPs from fabric-hosts.def)"
+	@echo "  make fabric-ensure-peer-orgs  add missing peer org dirs (Org3 → test-network/addOrg3.sh)"
 	@echo "  make fabric-seed-mock     CLI: add mock shipments to the ledger (network + CC up)"
 	@echo "  make fabric-clean-ledger  ./network.sh down + wipe org/channel dirs on disk (then make fabric-setup)"
 	@echo ""
 	@echo "App (after fabric-setup):"
 	@echo "  make compose-gen   Regenerate docker-compose.hosts.yml from fabric-hosts.def"
-	@echo "  make up          Build and start all API/UI stacks (from fabric-hosts.def)"
+	@echo "  make up          Ensure peer org dirs if needed, then all API/UI stacks"
 	@echo "  make down        Stop and remove containers"
 	@echo ""
 	@echo "Paths (override if needed):"
@@ -64,16 +68,19 @@ help:
 	@echo "  FABRIC_HOSTS_DEF=$(FABRIC_HOSTS_DEF)  (columns → see fabric-hosts.def.example)"
 	@echo "  FABRIC_TEST_NETWORK=$(FABRIC_TEST_NETWORK) (implied from FABRIC_SAMPLES_ROOT)"
 	@echo ""
-	@echo "URLs after make up — one UI/API pair per line in fabric-hosts.def (default ports 8080/8081, 8090/8091):"
-	@echo "  Org1  http://localhost:8081  (API 8080)   Org2  http://localhost:8091  (API 8090) when using default fabric-hosts.def"
+	@echo "UI/API ports: last two columns of each data row in $(FABRIC_HOSTS_DEF)"
 	@echo ""
 	@echo "Local (no Docker) still works: see README.md"
 
 compose-gen:
 	@HASHEDRO_HOME="$(ROOT)" FABRIC_HOSTS_DEF="$(FABRIC_HOSTS_DEF)" bash "$(ROOT)/scripts/gen-docker-compose-hosts.sh"
 
-_up-precheck: compose-gen
+_up-precheck: compose-gen fabric-samples-precheck
+	@HASHEDRO_HOME="$(ROOT)" FABRIC_HOSTS_DEF="$(FABRIC_HOSTS_DEF)" FABRIC_TEST_NETWORK="$(FABRIC_TEST_NETWORK)" bash "$(ROOT)/scripts/ensure-fabric-peer-orgs.sh"
 	@HASHEDRO_HOME="$(ROOT)" FABRIC_HOSTS_DEF="$(FABRIC_HOSTS_DEF)" FABRIC_SAMPLES_ROOT="$(FABRIC_SAMPLES_ROOT)" bash "$(ROOT)/scripts/check-fabric-hosts.sh"
+
+fabric-ensure-peer-orgs: fabric-samples-precheck
+	@HASHEDRO_HOME="$(ROOT)" FABRIC_HOSTS_DEF="$(FABRIC_HOSTS_DEF)" FABRIC_TEST_NETWORK="$(FABRIC_TEST_NETWORK)" bash "$(ROOT)/scripts/ensure-fabric-peer-orgs.sh"
 
 up: _up-precheck
 	docker compose -f "$(ROOT)/docker-compose.yml" up --build -d
@@ -88,8 +95,6 @@ dev-web:
 	cd "$(ROOT)/frontend" && npm install && npm run dev
 
 # --- Fabric test-network + chaincode (matches README prerequisites layout) ---
-
-FABRIC_TEST_NETWORK := $(FABRIC_SAMPLES_ROOT)/test-network
 
 # Download https://raw.githubusercontent.com/hyperledger/fabric/main/scripts/install-fabric.sh
 # into FABRIC_INSTALL_WORKDIR and run: ./install-fabric.sh -f FABRIC_VERSION -c FABRIC_CA_VERSION [components...]
@@ -116,7 +121,11 @@ fabric-samples-precheck:
 		echo "Or clone: https://github.com/hyperledger/fabric-samples"; \
 		exit 1; )
 
-# Start peers/orderer/CA and create channel mychannel (Docker on host).
+# Start peers/orderer only (no createChannel). Use when mychannel already exists and fabric-network would fail on re-join.
+fabric-network-up: fabric-samples-precheck
+	cd "$(FABRIC_TEST_NETWORK)" && ./network.sh up
+
+# Start peers/orderer/CA and create channel mychannel (Docker on host). Fails if channel already exists and peers already joined — use fabric-network-up + fabric-deploy-chaincode, or fabric-clean-ledger for a full reset.
 fabric-network: fabric-samples-precheck
 	cd "$(FABRIC_TEST_NETWORK)" && ./network.sh up createChannel
 
@@ -134,9 +143,13 @@ fabric-clean-ledger: fabric-samples-precheck
 	@echo "Ignore harmless 'no such volume' lines for docker_peer0.* / docker_orderer.* if they appear (compose uses compose_* volumes)."
 
 # Deploy HashedRoute chaincode to mychannel (requires Docker + network up).
+# Optional on the make line: SEQ= CC_VER= CC_END_POLICY= FABRIC_HOSTS_DEF= (passed through to deploy-chaincode.sh)
 fabric-deploy-chaincode: fabric-samples-precheck
 	@test -d "$(ROOT)/chaincode/delivery" || ( echo "Missing $(ROOT)/chaincode/delivery"; exit 1 )
-	FABRIC_TEST_NETWORK="$(FABRIC_TEST_NETWORK)" HASHEDRO_HOME="$(ROOT)" bash "$(ROOT)/scripts/deploy-chaincode.sh"
+	FABRIC_TEST_NETWORK="$(FABRIC_TEST_NETWORK)" HASHEDRO_HOME="$(ROOT)" \
+		FABRIC_HOSTS_DEF="$(FABRIC_HOSTS_DEF)" \
+		CC_VER="$(CC_VER)" SEQ="$(SEQ)" CC_END_POLICY="$(CC_END_POLICY)" CC_NAME="$(CC_NAME)" \
+		bash "$(ROOT)/scripts/deploy-chaincode.sh"
 
 # Submit mock CreateShipment / UpdateStatus txs via peer CLI (Org1 Admin).
 fabric-seed-mock: fabric-samples-precheck

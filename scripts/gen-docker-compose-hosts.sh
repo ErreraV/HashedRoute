@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Read fabric-hosts.def and write docker-compose.hosts.yml (API + web pairs).
-# No changes to backend, frontend app, or chaincode — add rows to fabric-hosts.def only.
+# Default chaincode endorsement OR(...,.peer) uses the same MSP_ID column; see scripts/lib-fabric-hosts.sh.
 #
 # fabric-hosts.def format (whitespace-separated, one stack per line):
 #   HOST_KEY  MSP_ID  CRYPTO_PEER_DIR  GATEWAY_PEER  HOST_PEER_PORT  API_PORT  WEB_PORT
+# HOST_KEY must be unique (Docker Compose service names api-<KEY> / web-<KEY>).
 # Example:
 #   org1 Org1MSP org1.example.com peer0.org1.example.com 7051 8080 8081
 #
@@ -31,6 +32,7 @@ fi
   echo "services:"
 } >"$OUT"
 
+seen_keys=()
 while IFS= read -r raw || [[ -n "$raw" ]]; do
   line="${raw%%#*}"
   line="${line#"${line%%[![:space:]]*}"}"
@@ -46,6 +48,22 @@ while IFS= read -r raw || [[ -n "$raw" ]]; do
     echo "Invalid HOST_KEY (use letters, digits, dots, hyphens): $key" >&2
     exit 1
   fi
+
+  dup=0
+  if ((${#seen_keys[@]})); then
+    for sk in "${seen_keys[@]}"; do
+      if [[ "$sk" == "$key" ]]; then
+        dup=1
+        break
+      fi
+    done
+  fi
+  if [[ "$dup" -ne 0 ]]; then
+    echo "Duplicate HOST_KEY '$key' in $DEF — each line needs a unique first column (e.g. org2 and org3, not two 'org2')." >&2
+    echo "  Offending line: $line" >&2
+    exit 1
+  fi
+  seen_keys+=("$key")
 
   user_dir="User1@${crypto_dir}"
 

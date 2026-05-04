@@ -10,7 +10,6 @@ import (
 )
 
 type api struct {
-	cfg      GatewayConfig
 	gw       *client.Gateway
 	contract *client.Contract
 }
