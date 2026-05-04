@@ -1,5 +1,5 @@
-.PHONY: help compose-gen up down dev-api dev-web \
-	fabric-samples-precheck fabric-ensure-peer-orgs fabric-network fabric-network-up fabric-clean-ledger fabric-deploy-chaincode fabric-seed-mock fabric-setup \
+.PHONY: help compose-gen up down \
+	fabric-samples-precheck fabric-network fabric-network-up fabric-add-org3 fabric-clean-ledger fabric-deploy-chaincode fabric-seed-mock fabric-setup \
 	fabric-install-hyperledger
 
 .DEFAULT_GOAL := help
@@ -24,14 +24,11 @@ FABRIC_SAMPLES_ROOT ?= $(shell \
 	elif test -f "$$_sibling/test-network/network.sh"; then echo "$$_sibling"; \
 	else echo "$$_sibling"; fi)
 
-FABRIC_CRYPTO_MOUNT ?= $(FABRIC_SAMPLES_ROOT)/test-network/organizations/peerOrganizations/org1.example.com
-
 FABRIC_HOSTS_DEF ?= $(ROOT)/fabric-hosts.def
 
 FABRIC_TEST_NETWORK := $(FABRIC_SAMPLES_ROOT)/test-network
 
 export FABRIC_SAMPLES_ROOT
-export FABRIC_CRYPTO_MOUNT
 export FABRIC_HOSTS_DEF
 
 # --- Download Fabric samples, Docker images, and binaries (install-fabric.sh) ---
@@ -50,49 +47,38 @@ help:
 	@echo "    override: FABRIC_GITHUB_USER, FABRIC_INSTALL_WORKDIR, FABRIC_INSTALL_COMPONENTS=(docker binary samples)"
 	@echo ""
 	@echo "Fabric network + chaincode (README §1–2):"
-	@echo "  make fabric-setup   ./network.sh up createChannel + deploy delivery chaincode"
+	@echo "  make fabric-setup   network + createChannel + addOrg3 + deploy delivery chaincode (3-org)"
 	@echo "  make fabric-network       ./network.sh up createChannel (first-time channel; see README if this errors)"
 	@echo "  make fabric-network-up    ./network.sh up only (nodes on host; channel must already exist)"
-	@echo "  make fabric-deploy-chaincode   only deploy (network must be up; MSPs from fabric-hosts.def)"
-	@echo "  make fabric-ensure-peer-orgs  add missing peer org dirs (Org3 → test-network/addOrg3.sh)"
+	@echo "  make fabric-add-org3     add Org3 to mychannel (after fabric-network; idempotent if already added)"
+	@echo "  make fabric-deploy-chaincode   only deploy (network + Org3 must be up; policy OR Org1–Org3 peers)"
 	@echo "  make fabric-seed-mock     CLI: add mock shipments to the ledger (network + CC up)"
 	@echo "  make fabric-clean-ledger  ./network.sh down + wipe org/channel dirs on disk (then make fabric-setup)"
 	@echo ""
 	@echo "App (after fabric-setup):"
-	@echo "  make compose-gen   Regenerate docker-compose.hosts.yml from fabric-hosts.def"
-	@echo "  make up          Ensure peer org dirs if needed, then all API/UI stacks"
+	@echo "  make compose-gen   Regenerate docker-compose.yml (three api/web stacks; optional port edits in fabric-hosts.def)"
+	@echo "  make up          Build and start all API/UI stacks (after fabric-setup)"
 	@echo "  make down        Stop and remove containers"
 	@echo ""
 	@echo "Paths (override if needed):"
 	@echo "  FABRIC_SAMPLES_ROOT=$(FABRIC_SAMPLES_ROOT)"
-	@echo "  FABRIC_HOSTS_DEF=$(FABRIC_HOSTS_DEF)  (columns → see fabric-hosts.def.example)"
+	@echo "  FABRIC_HOSTS_DEF=$(FABRIC_HOSTS_DEF)  (optional path; file must stay three-row org1–org3)"
 	@echo "  FABRIC_TEST_NETWORK=$(FABRIC_TEST_NETWORK) (implied from FABRIC_SAMPLES_ROOT)"
 	@echo ""
-	@echo "UI/API ports: last two columns of each data row in $(FABRIC_HOSTS_DEF)"
+	@echo "UI/API ports: last two columns per row in $(FABRIC_HOSTS_DEF) (three rows only)"
 	@echo ""
-	@echo "Local (no Docker) still works: see README.md"
 
 compose-gen:
 	@HASHEDRO_HOME="$(ROOT)" FABRIC_HOSTS_DEF="$(FABRIC_HOSTS_DEF)" bash "$(ROOT)/scripts/gen-docker-compose-hosts.sh"
 
 _up-precheck: compose-gen fabric-samples-precheck
-	@HASHEDRO_HOME="$(ROOT)" FABRIC_HOSTS_DEF="$(FABRIC_HOSTS_DEF)" FABRIC_TEST_NETWORK="$(FABRIC_TEST_NETWORK)" bash "$(ROOT)/scripts/ensure-fabric-peer-orgs.sh"
 	@HASHEDRO_HOME="$(ROOT)" FABRIC_HOSTS_DEF="$(FABRIC_HOSTS_DEF)" FABRIC_SAMPLES_ROOT="$(FABRIC_SAMPLES_ROOT)" bash "$(ROOT)/scripts/check-fabric-hosts.sh"
-
-fabric-ensure-peer-orgs: fabric-samples-precheck
-	@HASHEDRO_HOME="$(ROOT)" FABRIC_HOSTS_DEF="$(FABRIC_HOSTS_DEF)" FABRIC_TEST_NETWORK="$(FABRIC_TEST_NETWORK)" bash "$(ROOT)/scripts/ensure-fabric-peer-orgs.sh"
 
 up: _up-precheck
 	docker compose -f "$(ROOT)/docker-compose.yml" up --build -d
 
 down: compose-gen
 	docker compose -f "$(ROOT)/docker-compose.yml" down --remove-orphans
-
-dev-api:
-	cd "$(ROOT)/backend" && FABRIC_CRYPTO_PATH="$(FABRIC_CRYPTO_MOUNT)" go run .
-
-dev-web:
-	cd "$(ROOT)/frontend" && npm install && npm run dev
 
 # --- Fabric test-network + chaincode (matches README prerequisites layout) ---
 
@@ -129,6 +115,10 @@ fabric-network-up: fabric-samples-precheck
 fabric-network: fabric-samples-precheck
 	cd "$(FABRIC_TEST_NETWORK)" && ./network.sh up createChannel
 
+# Join Org3 to mychannel (run after fabric-network). Safe to re-run if Org3 is already on the channel (script may error — use fabric-clean-ledger for a clean slate).
+fabric-add-org3: fabric-samples-precheck
+	cd "$(FABRIC_TEST_NETWORK)/addOrg3" && ./addOrg3.sh up
+
 # Tear down test-network: removes peer/orderer containers, volumes, and generated org/channel artifacts.
 # Extra host-side rm avoids a fabric-samples edge case: stale organizations/ordererOrganizations without
 # peerOrganizations, which skips cryptogen and breaks createChannel (missing orderer TLS for configtxgen).
@@ -139,15 +129,15 @@ fabric-clean-ledger: fabric-samples-precheck
 		"$(FABRIC_TEST_NETWORK)/system-genesis-block" \
 		"$(FABRIC_TEST_NETWORK)/channel-artifacts"
 	@echo ""
-	@echo "Ledger cleared. Recreate network + chaincode: make fabric-setup   (or fabric-network then fabric-deploy-chaincode)"
+	@echo "Ledger cleared. Recreate: make fabric-setup"
+	@echo "  (or: make fabric-network && make fabric-add-org3 && make fabric-deploy-chaincode)"
 	@echo "Ignore harmless 'no such volume' lines for docker_peer0.* / docker_orderer.* if they appear (compose uses compose_* volumes)."
 
-# Deploy HashedRoute chaincode to mychannel (requires Docker + network up).
-# Optional on the make line: SEQ= CC_VER= CC_END_POLICY= FABRIC_HOSTS_DEF= (passed through to deploy-chaincode.sh)
+# Deploy HashedRoute chaincode to mychannel (Docker + test-network + Org3 material on disk).
+# Optional on the make line: SEQ= CC_VER= CC_END_POLICY= CC_NAME=
 fabric-deploy-chaincode: fabric-samples-precheck
 	@test -d "$(ROOT)/chaincode/delivery" || ( echo "Missing $(ROOT)/chaincode/delivery"; exit 1 )
 	FABRIC_TEST_NETWORK="$(FABRIC_TEST_NETWORK)" HASHEDRO_HOME="$(ROOT)" \
-		FABRIC_HOSTS_DEF="$(FABRIC_HOSTS_DEF)" \
 		CC_VER="$(CC_VER)" SEQ="$(SEQ)" CC_END_POLICY="$(CC_END_POLICY)" CC_NAME="$(CC_NAME)" \
 		bash "$(ROOT)/scripts/deploy-chaincode.sh"
 
@@ -155,7 +145,7 @@ fabric-deploy-chaincode: fabric-samples-precheck
 fabric-seed-mock: fabric-samples-precheck
 	FABRIC_TEST_NETWORK="$(FABRIC_TEST_NETWORK)" HASHEDRO_HOME="$(ROOT)" bash "$(ROOT)/scripts/seed-mock-ledger.sh"
 
-# Full setup from README §1 and §2: network + channel + delivery chaincode.
-fabric-setup: fabric-network fabric-deploy-chaincode
+# Full setup: network + channel, Org3 join, delivery chaincode (3-org endorsement).
+fabric-setup: fabric-network fabric-add-org3 fabric-deploy-chaincode
 	@echo ""
-	@echo "fabric-setup complete. Next: make up   (or dev-api / dev-web)"
+	@echo "fabric-setup complete. Next: make up"

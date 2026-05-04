@@ -1,11 +1,10 @@
-# Columns (space-separated):
+# Exactly THREE data rows (space-separated), in this order: org1, org2, org3.
+# Only the last two columns (API_PORT, WEB_PORT) are meant to be edited.
+#
+# Columns:
 #   HOST_KEY  MSP_ID  CRYPTO_PEER_DIR  GATEWAY_PEER  HOST_PEER_PORT  API_PORT  WEB_PORT
 #
-# HOST_KEY          — service suffix (api-<KEY>, web-<KEY>); unique per row; letters/digits/dots/hyphens
-# MSP_ID            — also used to build default chaincode endorsement OR(...,.peer) on deploy
-# CRYPTO_PEER_DIR   — directory under fabric-samples/.../peerOrganizations/ (e.g. org1.example.com)
-# GATEWAY_PEER      — peer DNS name Fabric expects (e.g. peer0.org1.example.com)
-# HOST_PEER_PORT    — gRPC mapped to localhost from test-network (7051 / 9051 / 11051 for sample orgs)
+# HOST_KEY / MSP_ID / CRYPTO_PEER_DIR / GATEWAY_PEER / HOST_PEER_PORT are fixed for HashedRoute (test-network peers).
 org1 Org1MSP org1.example.com peer0.org1.example.com 7051 8081 8091
 org2 Org2MSP org2.example.com peer0.org2.example.com 9051 8082 8092
 org3 Org3MSP org3.example.com peer0.org3.example.com 11051 8083 8093

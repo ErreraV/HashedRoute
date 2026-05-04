@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Verify MSP material exists for each stack in fabric-hosts.def.
+# Verify fabric-hosts.def shape (three fixed org rows) and User1 MSP on disk for each.
 set -euo pipefail
 
 ROOT="${HASHEDRO_HOME:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
@@ -11,6 +11,10 @@ if [[ ! -f "$DEF" ]]; then
   echo "Missing $DEF" >&2
   exit 1
 fi
+
+# shellcheck source=/dev/null
+. "$(dirname "${BASH_SOURCE[0]}")/lib-fabric-hosts.sh"
+fabric_hosts_validate_three "$DEF" || exit 1
 
 err=0
 while IFS= read -r raw || [[ -n "$raw" ]]; do

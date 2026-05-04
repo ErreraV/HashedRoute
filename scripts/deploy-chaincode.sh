@@ -1,20 +1,19 @@
 #!/usr/bin/env bash
-# Deploy HashedRoute delivery chaincode to the Fabric test-network.
+# Deploy HashedRoute delivery chaincode to the Fabric test-network (always Org1 + Org2 + Org3 lifecycle).
 #
 # Prerequisites:
-#   - Cloned https://github.com/hyperledger/fabric-samples (release-2.5 branch recommended)
-#   - Docker + test network up: ./network.sh up createChannel
+#   - fabric-samples test-network; channel mychannel; Org3 added (./addOrg3.sh up) so org3 crypto exists
+#   - Docker + peers up
 #
-# Usage (from fabric-samples/test-network):
-#   export HASHEDRO_HOME=/path/to/HashedRoute
-#   $HASHEDRO_HOME/scripts/deploy-chaincode.sh
+# Usage:
+#   export FABRIC_TEST_NETWORK=.../fabric-samples/test-network
+#   HASHEDRO_HOME=/path/to/HashedRoute $HASHEDRO_HOME/scripts/deploy-chaincode.sh
 #
 # Optional env:
 #   CC_NAME   default: delivery
 #   CC_VER    default: 1.0
 #   SEQ       default: 1  (bump on upgrade)
-#   FABRIC_HOSTS_DEF  default: $HASHEDRO_HOME/fabric-hosts.def — MSP column sets default endorsement OR(...)
-#   CC_END_POLICY  optional override (skip parsing fabric-hosts.def)
+#   CC_END_POLICY  override default OR('Org1MSP.peer','Org2MSP.peer','Org3MSP.peer')
 
 set -euo pipefail
 
@@ -23,7 +22,6 @@ CC_NAME="${CC_NAME:-delivery}"
 CC_VER="${CC_VER:-1.0}"
 SEQ="${SEQ:-1}"
 CC_PATH_REL="${CC_PATH_REL:-$HASHEDRO_HOME/chaincode/delivery}"
-DEF="${FABRIC_HOSTS_DEF:-$HASHEDRO_HOME/fabric-hosts.def}"
 
 TN="$(cd "${FABRIC_TEST_NETWORK:-}" 2>/dev/null && pwd || true)"
 
@@ -38,31 +36,44 @@ if [[ ! -d "$CC_PATH_REL" ]]; then
   exit 1
 fi
 
-if [[ ! -f "$DEF" ]]; then
-  echo "Missing $DEF — set FABRIC_HOSTS_DEF or create fabric-hosts.def" >&2
-  exit 1
-fi
-
 # shellcheck source=/dev/null
 . "$(dirname "$0")/lib-fabric-hosts.sh"
 
 if [[ -n "${CC_END_POLICY:-}" ]]; then
   CCEPT="$CC_END_POLICY"
 else
-  CCEPT="$(fabric_hosts_endorsement_or "$DEF")" || exit 1
+  CCEPT="$HASHEDROUTE_CC_ENDORSEMENT_POLICY"
+fi
+
+ORG3_CRYPTO="$TN/organizations/peerOrganizations/org3.example.com"
+if [[ ! -d "$ORG3_CRYPTO" ]]; then
+  echo "Org3 peer crypto is missing on disk: $ORG3_CRYPTO" >&2
+  echo "This is normal right after make fabric-clean-ledger or before addOrg3 runs." >&2
+  echo "Recreate orgs + channel + Org3, then deploy:" >&2
+  echo "  make fabric-setup" >&2
+  echo "or step by step:" >&2
+  echo "  make fabric-network && make fabric-add-org3 && make fabric-deploy-chaincode" >&2
+  exit 1
 fi
 
 cd "$TN"
 
 echo "Deploying chaincode $CC_NAME $CC_VER (sequence $SEQ) from $CC_PATH_REL ..."
-echo "Endorsement policy (from ${DEF} unless CC_END_POLICY set): $CCEPT"
+echo "Endorsement policy (override with CC_END_POLICY): $CCEPT"
 
-./network.sh deployCC \
-  -ccn "$CC_NAME" \
-  -ccp "$CC_PATH_REL" \
-  -ccv "$CC_VER" \
-  -ccl go \
-  -ccs "$SEQ" \
-  -ccep "$CCEPT"
+export TEST_NETWORK_HOME="$TN"
+export CHANNEL_NAME="${CHANNEL_NAME:-mychannel}"
+export CC_NAME
+export CC_SRC_PATH="$CC_PATH_REL"
+export CC_SRC_LANGUAGE="${CC_SRC_LANGUAGE:-go}"
+export CC_VERSION="$CC_VER"
+export CC_SEQUENCE="$SEQ"
+export CC_INIT_FCN="${CC_INIT_FCN:-NA}"
+export CC_END_POLICY="$CCEPT"
+export CC_COLL_CONFIG="${CC_COLL_CONFIG:-NA}"
+export DELAY="${DELAY:-${CLI_DELAY:-3}}"
+export MAX_RETRY="${MAX_RETRY:-5}"
+export VERBOSE="${VERBOSE:-false}"
+bash "$HASHEDRO_HOME/scripts/fabric-lifecycle-three-org.sh"
 
 echo "Done. Default channel: mychannel. Use CC_NAME=$CC_NAME in the API."

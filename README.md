@@ -4,8 +4,7 @@ Shipments on **Hyperledger Fabric** (**Go chaincode**), a **Go** REST API ([fabr
 
 ## Prerequisites
 
-- **Docker** + **Docker Compose v2.20+** (`include` in [`docker-compose.yml`](docker-compose.yml); upgrade Compose if `make up` fails on `include`).
-- **Go** and **Node** if you use `make dev-api` / `make dev-web` instead of `make up`.
+- **Docker** + **Docker Compose v2** (CLI plugin).
 
 Pinned stacks: Fabric **2.5.x** + gateway **v1.10.x** + contract API **v2.2.x** (see `backend/go.mod` and `chaincode/delivery/go.mod`).
 
@@ -15,16 +14,15 @@ Copy [`.env.example`](.env.example) to **`.env`** and set at least **`FABRIC_SAM
 
 Run **`make help`** anytime: it prints targets and the resolved **`FABRIC_SAMPLES_ROOT`**.
 
-### Many UI/API stacks (same ledger)
+### Three hosts (fixed topology)
 
-**[`fabric-hosts.def`](fabric-hosts.def)** is the single place that controls how many Docker **api-*** / **web-*** stacks exist, their ports, and which MSP and peer each stack uses. See [`fabric-hosts.def.example`](fabric-hosts.def.example) for column meanings. The first column (**HOST_KEY**) must be **unique** on every row—Docker Compose service names are `api-<KEY>` / `web-<KEY>`.
+HashedRoute always runs **three** test-network orgs (**Org1**, **Org2**, **Org3**): three peers on the channel, chaincode endorsement **`OR('Org1MSP.peer','Org2MSP.peer','Org3MSP.peer')`** (override with **`CC_END_POLICY`** on deploy if you must).
 
-- **Add or remove hosts:** edit **`fabric-hosts.def`** only, then **`make up`** (which regenerates [`docker-compose.hosts.yml`](docker-compose.hosts.yml) from that file).
-- **`make up`** also runs [`scripts/ensure-fabric-peer-orgs.sh`](scripts/ensure-fabric-peer-orgs.sh): if **`fabric-hosts.def`** references **`org3.example.com`** but **`User1@org3…/msp`** is missing, it runs **`test-network/addOrg3/addOrg3.sh up`** (channel **mychannel** and Org1/Org2 must already exist). Other org directory names are not auto-generated—use a custom network or add material yourself.
-- **`make fabric-deploy-chaincode`** (and [`scripts/deploy-chaincode.sh`](scripts/deploy-chaincode.sh)) builds the default endorsement policy as **`OR('<MSP>.peer',...)`** from the **unique MSP_ID** values in **`fabric-hosts.def`**, unless you set **`CC_END_POLICY`**. Keep that list aligned with orgs that are actually on your channel.
-- Identities use **`User1@`** plus **`CRYPTO_PEER_DIR`** (same layout as fabric-samples test-network).
+**[`fabric-hosts.def`](fabric-hosts.def)** must contain **exactly three** data rows, in order **org1 → org2 → org3**, with fixed MSPs, crypto dirs, gateway peers, and host peer gRPC ports (**7051** / **9051** / **11051**). You may change only the last two columns per row (**API_PORT**, **WEB_PORT**) for the Docker **api-*** / **web-*** services.
 
-Optional: **`FABRIC_HOSTS_DEF=/path/to/hosts.def make up`** (and the same variable on **`make fabric-deploy-chaincode`** if you use a non-default path). Run **`make fabric-ensure-peer-orgs`** alone to only execute the Org3 provisioning step.
+Default identities use **`User1@org1.example.com`** (and org2/org3), matching fabric-samples.
+
+Optional: **`FABRIC_HOSTS_DEF=/path/to/file make compose-gen`** if the def file lives outside the repo (same three-row format).
 
 ## Quick start (Make only)
 
@@ -33,42 +31,44 @@ From this repo root, in order:
 | Step | Command |
 |------|---------|
 | 1. Install Fabric binaries, Docker images, and `fabric-samples` (once) | `make fabric-install-hyperledger` — optional: `FABRIC_GITHUB_USER=...` |
-| 2. Start test network, create channel, deploy **delivery** chaincode | `make fabric-setup` — same optional `FABRIC_GITHUB_USER=...` if install used it |
+| 2. Start test network, create **mychannel**, add Org3, deploy **delivery** chaincode | `make fabric-setup` — same optional `FABRIC_GITHUB_USER=...` if install used it |
 | 3. Run Docker UI/API stacks | `make up` |
 
-Open each UI/API using the **API_PORT** and **WEB_PORT** columns from your **`fabric-hosts.def`**. Stop: **`make down`**.
+Open each UI/API using the **API_PORT** and **WEB_PORT** from **`fabric-hosts.def`**. Stop: **`make down`**.
 
-**Local dev instead of Docker:** `make dev-api` in one terminal, **`make dev-web`** in another; use the URL Vite prints (CORS allows **`http://localhost:5173`**).
+**`make fabric-setup`** runs **`fabric-network`** (Org1 + Org2 channel create), **`fabric-add-org3`** (`addOrg3.sh up`), then **`fabric-deploy-chaincode`**. From a **clean** ledger you do not need to run **`addOrg3`** by hand.
+
+If you already have **mychannel** without Org3, run **`make fabric-add-org3`**, then **`make fabric-deploy-chaincode SEQ=2`** (or the next sequence), then **`make up`**.
 
 ## Other Make targets
 
-- **`make compose-gen`** — regenerate **`docker-compose.hosts.yml`** from **`fabric-hosts.def`** without starting containers.
-- **`make fabric-network`** — `./network.sh up createChannel` (first channel create + join); see troubleshooting if **`mychannel` already exists**.
-- **`make fabric-network-up`** — `./network.sh up` only (bring up nodes; use when the channel is already created).
-- **`make fabric-ensure-peer-orgs`** — run [`scripts/ensure-fabric-peer-orgs.sh`](scripts/ensure-fabric-peer-orgs.sh) only (Org3 via **`addOrg3.sh`** when **`fabric-hosts.def`** requires **`org3.example.com`** and MSP is missing).
-- **`make fabric-deploy-chaincode`** — deploy chaincode only (network must be up). Default endorsement policy follows **`fabric-hosts.def`** MSPs unless **`CC_END_POLICY`** is set.
+- **`make compose-gen`** — regenerate **`docker-compose.yml`** from **`fabric-hosts.def`** (port edits only).
+- **`make fabric-network`** — `./network.sh up createChannel` (Org1 + Org2 on **mychannel**).
+- **`make fabric-add-org3`** — **`addOrg3.sh up`** (Org3 crypto, peer, join channel).
+- **`make fabric-network-up`** — `./network.sh up` only (nodes only; channel must exist).
+- **`make fabric-deploy-chaincode`** — deploy chaincode only (Org3 material must exist under **`test-network/organizations/.../org3.example.com`**).
 
-Chaincode redeploy: bump **`SEQ`** (and usually **`CC_VER`**) when you change chaincode or which orgs endorse—see [`scripts/deploy-chaincode.sh`](scripts/deploy-chaincode.sh) env vars or pass them on the **`make fabric-deploy-chaincode`** line.
+Chaincode redeploy: bump **`SEQ`** (and usually **`CC_VER`**) when you change chaincode — see [`scripts/deploy-chaincode.sh`](scripts/deploy-chaincode.sh) env vars or pass them on the **`make fabric-deploy-chaincode`** line.
 
 ## Project layout
 
 | Path | Role |
 |------|------|
 | [`chaincode/delivery/`](chaincode/delivery/) | `DeliveryContract` on the ledger |
-| [`fabric-hosts.def`](fabric-hosts.def) | Declarative list of Docker **api-**/ **web-** stacks (ports, MSP, peer); [`fabric-hosts.def.example`](fabric-hosts.def.example) |
-| [`scripts/gen-docker-compose-hosts.sh`](scripts/gen-docker-compose-hosts.sh) | Generates **`docker-compose.hosts.yml`** from **`fabric-hosts.def`** |
-| [`scripts/ensure-fabric-peer-orgs.sh`](scripts/ensure-fabric-peer-orgs.sh) | **`make up`**: create missing **`org3.example.com`** peer org material via fabric-samples **`addOrg3`** |
+| [`fabric-hosts.def`](fabric-hosts.def) | Three fixed org rows; optional API/web port changes |
+| [`scripts/lib-fabric-hosts.sh`](scripts/lib-fabric-hosts.sh) | Validates **`fabric-hosts.def`**; default endorsement policy constant |
+| [`scripts/gen-docker-compose-hosts.sh`](scripts/gen-docker-compose-hosts.sh) | Writes **`docker-compose.yml`** |
 | [`backend/`](backend/) | REST → Fabric Gateway |
 | [`frontend/`](frontend/) | Operator UI |
-| [`docker-compose.yml`](docker-compose.yml) | **`include`s** generated [`docker-compose.hosts.yml`](docker-compose.hosts.yml) (from **`fabric-hosts.def`**) |
+| [`docker-compose.yml`](docker-compose.yml) | Generated app stack (three API + three web services) |
 
 ## Troubleshooting
 
 - **`make fabric-setup` / `make up` can’t find `fabric-samples`:** fix **`.env`** (`FABRIC_SAMPLES_ROOT`, **`FABRIC_GITHUB_USER`**). Run **`make help`** to see what path is used.
-- **API errors reading MSP / certs:** every row in **`fabric-hosts.def`** must have matching **`User1@…`** under **`test-network/organizations/peerOrganizations/`** (`make up` runs a check per line). **`make up`** will try to create Org3 material with **`addOrg3.sh`** when the third column is **`org3.example.com`**; Org1/Org2 require **`make fabric-network`** / **`fabric-setup`** first.
-- **`Unavailable` / `connection refused` on a peer port:** match **`HOST_PEER_PORT`** in **`fabric-hosts.def`** to the gRPC port your org’s peer publishes on the host (see **`docker ps`**).
-- **Endorsement or commit failures after changing `fabric-hosts.def`:** redeploy chaincode with a higher **`SEQ`** (and a policy that matches channel orgs), or trim the file to orgs that exist on the channel.
-- **`ledger [mychannel] already exists` / join channel errors from `make fabric-network`:** peers are already on the channel. Bring up nodes with **`make fabric-network-up`** if needed, then **`make fabric-deploy-chaincode`**; or **`make fabric-clean-ledger`** and **`make fabric-setup`** for a clean slate.
+- **API errors reading MSP / certs:** each org’s **`User1@…`** tree must exist under **`test-network/organizations/peerOrganizations/`**. After **`make fabric-setup`**, Org3 is added automatically; for manual recovery run **`make fabric-add-org3`** (from **`test-network/addOrg3`**).
+- **`fabric-hosts.def` validation errors:** the file must stay three rows with the exact org1/org2/org3 fields documented in the file header; only the last two port columns are free to change.
+- **`Unavailable` / `connection refused` on a peer port:** host gRPC ports are fixed at **7051** / **9051** / **11051** for peers 1–3; confirm **`docker ps`** matches the test-network.
+- **`ledger [mychannel] already exists` / join errors from `make fabric-network`:** bring up nodes with **`make fabric-network-up`**, then **`make fabric-add-org3`** / **`make fabric-deploy-chaincode`** as needed; or **`make fabric-clean-ledger`** and **`make fabric-setup`**.
 
 Full Fabric teardown is done with **`fabric-samples/test-network`** scripts (not wrapped here).
 

@@ -23,5 +23,5 @@ npm-debug.log*
 # Env with local paths (optional)
 .env
 
-# Generated from fabric-hosts.def (make up / make compose-gen)
-docker-compose.hosts.yml
+# Docker
+docker-compose.yml
