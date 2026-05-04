@@ -1,5 +1,6 @@
 .PHONY: help up down install clean setup seed \
-	fabric-samples-precheck fabric-network fabric-network-up fabric-add-org3 fabric-deploy-chaincode
+	fabric-samples-precheck fabric-network fabric-network-up fabric-add-org3 fabric-deploy-chaincode \
+	test
 
 .DEFAULT_GOAL := help
 
@@ -50,6 +51,7 @@ help:
 	@echo "  make fabric-deploy-chaincode   only deploy (network + Org3 must be up; policy OR Org1–Org3 peers)"
 	@echo "  make seed      CLI: add mock shipments to the ledger (network + CC up)"
 	@echo "  make clean     ./network.sh down + wipe org/channel dirs on disk (then make setup)"
+	@echo "  make test 		 run chaincode unit tests (no network needed)"
 	@echo ""
 	@echo "App (after setup):"
 	@echo "  make up          Build and start API/UI from docker-compose.yml (edit that file for ports)"
@@ -135,6 +137,17 @@ fabric-deploy-chaincode: fabric-samples-precheck
 # Submit mock CreateShipment / UpdateStatus txs via peer CLI (Org1 Admin).
 seed: fabric-samples-precheck
 	FABRIC_TEST_NETWORK="$(FABRIC_TEST_NETWORK)" HASHEDRO_HOME="$(ROOT)" bash "$(ROOT)/scripts/seed-mock-ledger.sh"
+
+# Run chaincode unit tests (no Fabric network needed).
+test:
+	@cd "$(ROOT)/chaincode/delivery" && go test -v -count=1 ./... > /tmp/cc-test.log 2>&1; \
+	rc=$$?; \
+	cat /tmp/cc-test.log; \
+	passed=$$(grep -c '^--- PASS:' /tmp/cc-test.log 2>/dev/null || true); \
+	failed=$$(grep -c '^--- FAIL:' /tmp/cc-test.log 2>/dev/null || true); \
+	echo "----- tests: $${passed} passed, $${failed} failed -----"; \
+	rm -f /tmp/cc-test.log; \
+	exit $$rc
 
 # Full setup: network + channel, Org3 join, delivery chaincode (3-org endorsement).
 setup: fabric-network fabric-add-org3 fabric-deploy-chaincode
