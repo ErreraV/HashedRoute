@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Submit mocked DeliveryContract transactions via Org1 Admin (test-network peer CLI).
 #
-# Prerequisites: test network up, channel created, chaincode deployed (e.g. make fabric-setup).
+# Prerequisites: test network up, channel created, chaincode deployed (e.g. make setup).
 #
 # Environment (optional):
 #   FABRIC_TEST_NETWORK  path to fabric-samples/test-network (default: from HASHEDRO_HOME Makefile flow)
@@ -38,7 +38,7 @@ export VERBOSE="${VERBOSE:-false}"
 setGlobals 1
 
 if ! command -v peer >/dev/null 2>&1; then
-  echo "peer not found. Install Fabric binaries (e.g. make fabric-install-hyperledger) and ensure \$PATH includes fabric-samples/bin." >&2
+  echo "peer not found. Install Fabric binaries (e.g. make install) and ensure \$PATH includes fabric-samples/bin." >&2
   exit 1
 fi
 

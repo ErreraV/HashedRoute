@@ -23,7 +23,7 @@ export TEST_NETWORK_HOME="$TN"
 FABRIC_SAMPLES_BIN="$(cd "$TN/.." && pwd)/bin"
 export PATH="${FABRIC_SAMPLES_BIN}:${PATH}"
 if ! command -v peer >/dev/null 2>&1; then
-  echo "peer not in PATH. Install Fabric binaries (e.g. make fabric-install-hyperledger) or ensure exists: ${FABRIC_SAMPLES_BIN}/peer" >&2
+  echo "peer not in PATH. Install Fabric binaries (e.g. make install) or ensure exists: ${FABRIC_SAMPLES_BIN}/peer" >&2
   exit 1
 fi
 

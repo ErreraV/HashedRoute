@@ -36,21 +36,20 @@ if [[ ! -d "$CC_PATH_REL" ]]; then
   exit 1
 fi
 
-# shellcheck source=/dev/null
-. "$(dirname "$0")/lib-fabric-hosts.sh"
-
+# Default signature policy: all three test-network org peers may endorse.
+DEFAULT_CC_ENDORSEMENT="OR('Org1MSP.peer','Org2MSP.peer','Org3MSP.peer')"
 if [[ -n "${CC_END_POLICY:-}" ]]; then
   CCEPT="$CC_END_POLICY"
 else
-  CCEPT="$HASHEDROUTE_CC_ENDORSEMENT_POLICY"
+  CCEPT="$DEFAULT_CC_ENDORSEMENT"
 fi
 
 ORG3_CRYPTO="$TN/organizations/peerOrganizations/org3.example.com"
 if [[ ! -d "$ORG3_CRYPTO" ]]; then
   echo "Org3 peer crypto is missing on disk: $ORG3_CRYPTO" >&2
-  echo "This is normal right after make fabric-clean-ledger or before addOrg3 runs." >&2
+  echo "This is normal right after make clean or before addOrg3 runs." >&2
   echo "Recreate orgs + channel + Org3, then deploy:" >&2
-  echo "  make fabric-setup" >&2
+  echo "  make setup" >&2
   echo "or step by step:" >&2
   echo "  make fabric-network && make fabric-add-org3 && make fabric-deploy-chaincode" >&2
   exit 1
