@@ -1,4 +1,4 @@
-.PHONY: help up down logs ps restart build-docker clean-docker dev-api dev-web \
+.PHONY: help up down dev-api dev-web \
 	fabric-samples-precheck fabric-network fabric-deploy-chaincode fabric-setup \
 	fabric-install-hyperledger
 
@@ -58,10 +58,6 @@ help:
 	@echo "App (after fabric-setup):"
 	@echo "  make up          Build images and start api + web (Docker Compose)"
 	@echo "  make down        Stop and remove containers"
-	@echo "  make logs        Follow container logs"
-	@echo "  make ps          docker compose ps"
-	@echo "  make restart     down && up"
-	@echo "  make build-docker  docker compose build (no run)"
 	@echo ""
 	@echo "Paths (override if needed):"
 	@echo "  FABRIC_SAMPLES_ROOT=$(FABRIC_SAMPLES_ROOT)"
@@ -85,22 +81,8 @@ up: _up-precheck
 down:
 	docker compose -f "$(ROOT)/docker-compose.yml" down
 
-logs:
-	docker compose -f "$(ROOT)/docker-compose.yml" logs -f
-
-ps:
-	docker compose -f "$(ROOT)/docker-compose.yml" ps
-
-restart: down up
-
-build-docker:
-	docker compose -f "$(ROOT)/docker-compose.yml" build
-
-clean-docker: down
-	docker rmi -f hashedroute-api:local hashedroute-web:local 2>/dev/null || true
-
 dev-api:
-	cd "$(ROOT)/backend" && go run .
+	cd "$(ROOT)/backend" && FABRIC_CRYPTO_PATH="$(FABRIC_CRYPTO_MOUNT)" go run .
 
 dev-web:
 	cd "$(ROOT)/frontend" && npm install && npm run dev

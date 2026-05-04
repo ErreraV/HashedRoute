@@ -9,10 +9,8 @@ services:
     environment:
       HTTP_ADDR: ":8080"
       FABRIC_CRYPTO_PATH: /fabric/crypto
-      FABRIC_CERT_PATH: /fabric/crypto/users/User1@org1.example.com/msp/signcerts/cert.pem
       FABRIC_KEY_DIR: /fabric/crypto/users/User1@org1.example.com/msp/keystore
       FABRIC_TLS_CA: /fabric/crypto/peers/peer0.org1.example.com/tls/ca.crt
-      # Peer gateway runs on the host (Fabric test-network containers publish 7051).
       FABRIC_PEER_ENDPOINT: dns:///host.docker.internal:${FABRIC_HOST_PEER_PORT:-7051}
       FABRIC_GATEWAY_PEER: peer0.org1.example.com
       FABRIC_MSP_ID: Org1MSP

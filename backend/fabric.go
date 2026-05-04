@@ -4,7 +4,6 @@ import (
 	"crypto/x509"
 	"fmt"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -43,9 +42,14 @@ func gatewayConfigFromEnv() (GatewayConfig, error) {
 	}
 	cryptoRoot = filepath.Clean(cryptoRoot)
 
-	certPath := os.Getenv("FABRIC_CERT_PATH")
+	certPath := strings.TrimSpace(os.Getenv("FABRIC_CERT_PATH"))
 	if certPath == "" {
-		certPath = filepath.Join(cryptoRoot, "users", "User1@org1.example.com", "msp", "signcerts", "cert.pem")
+		signcerts := filepath.Join(cryptoRoot, "users", "User1@org1.example.com", "msp", "signcerts")
+		var err error
+		certPath, err = resolveSignCert(signcerts)
+		if err != nil {
+			return GatewayConfig{}, err
+		}
 	}
 	keyDir := os.Getenv("FABRIC_KEY_DIR")
 	if keyDir == "" {
@@ -75,6 +79,27 @@ func getEnvDefault(key, fallback string) string {
 		return fallback
 	}
 	return v
+}
+
+// resolveSignCert picks an identity cert under MSP signcerts (cryptogen uses *-cert.pem; CA enroll may use cert.pem).
+func resolveSignCert(signcertsDir string) (string, error) {
+	def := filepath.Join(signcertsDir, "cert.pem")
+	if _, err := os.Stat(def); err == nil {
+		return def, nil
+	}
+	entries, err := os.ReadDir(signcertsDir)
+	if err != nil {
+		return "", fmt.Errorf("msp signcerts %s: %w", signcertsDir, err)
+	}
+	for _, e := range entries {
+		if e.IsDir() || strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		if strings.EqualFold(filepath.Ext(e.Name()), ".pem") {
+			return filepath.Join(signcertsDir, e.Name()), nil
+		}
+	}
+	return "", fmt.Errorf("no .pem certificate in %s (expected cert.pem or *-cert.pem)", signcertsDir)
 }
 
 func connectGateway(cfg GatewayConfig) (*client.Gateway, *grpc.ClientConn, error) {
@@ -130,6 +155,10 @@ func newIdentity(cfg GatewayConfig) (*identity.X509Identity, error) {
 }
 
 func newSign(cfg GatewayConfig) (identity.Sign, error) {
+	keyFile := filepath.Join(cfg.KeyDir, "priv_sk")
+	if _, err := os.Stat(keyFile); err == nil {
+		return signFromPEMFile(keyFile)
+	}
 	files, err := os.ReadDir(cfg.KeyDir)
 	if err != nil {
 		return nil, fmt.Errorf("read keystore: %w", err)
@@ -137,7 +166,11 @@ func newSign(cfg GatewayConfig) (identity.Sign, error) {
 	if len(files) == 0 {
 		return nil, fmt.Errorf("no private key file in %s", cfg.KeyDir)
 	}
-	pemBytes, err := os.ReadFile(path.Join(cfg.KeyDir, files[0].Name()))
+	return signFromPEMFile(filepath.Join(cfg.KeyDir, files[0].Name()))
+}
+
+func signFromPEMFile(file string) (identity.Sign, error) {
+	pemBytes, err := os.ReadFile(file)
 	if err != nil {
 		return nil, err
 	}
