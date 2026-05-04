@@ -1,4 +1,4 @@
-.PHONY: help up down dev-api dev-web \
+.PHONY: help compose-gen up down dev-api dev-web \
 	fabric-samples-precheck fabric-network fabric-clean-ledger fabric-deploy-chaincode fabric-seed-mock fabric-setup \
 	fabric-install-hyperledger
 
@@ -26,14 +26,11 @@ FABRIC_SAMPLES_ROOT ?= $(shell \
 
 FABRIC_CRYPTO_MOUNT ?= $(FABRIC_SAMPLES_ROOT)/test-network/organizations/peerOrganizations/org1.example.com
 
-API_PORT ?= 8080
-WEB_PORT ?= 8081
-FABRIC_HOST_PEER_PORT ?= 7051
+FABRIC_HOSTS_DEF ?= $(ROOT)/fabric-hosts.def
 
+export FABRIC_SAMPLES_ROOT
 export FABRIC_CRYPTO_MOUNT
-export API_PORT
-export WEB_PORT
-export FABRIC_HOST_PEER_PORT
+export FABRIC_HOSTS_DEF
 
 # --- Download Fabric samples, Docker images, and binaries (install-fabric.sh) ---
 # Docs: https://hyperledger-fabric.readthedocs.io/en/latest/install.html
@@ -58,30 +55,31 @@ help:
 	@echo "  make fabric-clean-ledger  ./network.sh down + wipe org/channel dirs on disk (then make fabric-setup)"
 	@echo ""
 	@echo "App (after fabric-setup):"
-	@echo "  make up          Build images and start api + web (Docker Compose)"
+	@echo "  make compose-gen   Regenerate docker-compose.hosts.yml from fabric-hosts.def"
+	@echo "  make up          Build and start all API/UI stacks (from fabric-hosts.def)"
 	@echo "  make down        Stop and remove containers"
 	@echo ""
 	@echo "Paths (override if needed):"
 	@echo "  FABRIC_SAMPLES_ROOT=$(FABRIC_SAMPLES_ROOT)"
+	@echo "  FABRIC_HOSTS_DEF=$(FABRIC_HOSTS_DEF)  (columns → see fabric-hosts.def.example)"
 	@echo "  FABRIC_TEST_NETWORK=$(FABRIC_TEST_NETWORK) (implied from FABRIC_SAMPLES_ROOT)"
 	@echo ""
-	@echo "URLs after make up:"
-	@echo "  UI   → http://localhost:$(WEB_PORT)"
-	@echo "  API  → http://localhost:$(API_PORT)  (also proxied as /api on the UI port)"
+	@echo "URLs after make up — one UI/API pair per line in fabric-hosts.def (default ports 8080/8081, 8090/8091):"
+	@echo "  Org1  http://localhost:8081  (API 8080)   Org2  http://localhost:8091  (API 8090) when using default fabric-hosts.def"
 	@echo ""
 	@echo "Local (no Docker) still works: see README.md"
 
-_up-precheck:
-	@test -d "$(FABRIC_CRYPTO_MOUNT)/users/User1@org1.example.com/msp" || ( \
-		echo "Missing Org1 MSP at: $(FABRIC_CRYPTO_MOUNT)"; \
-		echo "Start the test network and enroll users, or set FABRIC_SAMPLES_ROOT / FABRIC_CRYPTO_MOUNT."; \
-		exit 1; )
+compose-gen:
+	@HASHEDRO_HOME="$(ROOT)" FABRIC_HOSTS_DEF="$(FABRIC_HOSTS_DEF)" bash "$(ROOT)/scripts/gen-docker-compose-hosts.sh"
+
+_up-precheck: compose-gen
+	@HASHEDRO_HOME="$(ROOT)" FABRIC_HOSTS_DEF="$(FABRIC_HOSTS_DEF)" FABRIC_SAMPLES_ROOT="$(FABRIC_SAMPLES_ROOT)" bash "$(ROOT)/scripts/check-fabric-hosts.sh"
 
 up: _up-precheck
 	docker compose -f "$(ROOT)/docker-compose.yml" up --build -d
 
-down:
-	docker compose -f "$(ROOT)/docker-compose.yml" down
+down: compose-gen
+	docker compose -f "$(ROOT)/docker-compose.yml" down --remove-orphans
 
 dev-api:
 	cd "$(ROOT)/backend" && FABRIC_CRYPTO_PATH="$(FABRIC_CRYPTO_MOUNT)" go run .

@@ -1,0 +1,3 @@
+# HashedRoute Docker stacks: one API + UI pair per line (see fabric-hosts.def.example).
+org1 Org1MSP org1.example.com peer0.org1.example.com 7051 8080 8081
+org2 Org2MSP org2.example.com peer0.org2.example.com 9051 8090 8091

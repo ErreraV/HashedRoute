@@ -42,18 +42,21 @@ func gatewayConfigFromEnv() (GatewayConfig, error) {
 	}
 	cryptoRoot = filepath.Clean(cryptoRoot)
 
+	keyDir := strings.TrimSpace(os.Getenv("FABRIC_KEY_DIR"))
+	if keyDir == "" {
+		keyDir = filepath.Join(cryptoRoot, "users", "User1@org1.example.com", "msp", "keystore")
+	} else {
+		keyDir = filepath.Clean(keyDir)
+	}
+
 	certPath := strings.TrimSpace(os.Getenv("FABRIC_CERT_PATH"))
 	if certPath == "" {
-		signcerts := filepath.Join(cryptoRoot, "users", "User1@org1.example.com", "msp", "signcerts")
+		signcerts := filepath.Join(filepath.Dir(keyDir), "signcerts")
 		var err error
 		certPath, err = resolveSignCert(signcerts)
 		if err != nil {
 			return GatewayConfig{}, err
 		}
-	}
-	keyDir := os.Getenv("FABRIC_KEY_DIR")
-	if keyDir == "" {
-		keyDir = filepath.Join(cryptoRoot, "users", "User1@org1.example.com", "msp", "keystore")
 	}
 	tlsCA := os.Getenv("FABRIC_TLS_CA")
 	if tlsCA == "" {

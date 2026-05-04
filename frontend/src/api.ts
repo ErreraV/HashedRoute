@@ -31,13 +31,14 @@ export interface Shipment {
 }
 
 async function readError(res: Response): Promise<string> {
+  const text = await res.text()
   try {
-    const j = (await res.json()) as { error?: string }
+    const j = JSON.parse(text) as { error?: string }
     if (j.error) return j.error
   } catch {
-    /* ignore */
+    /* not JSON */
   }
-  return await res.text()
+  return text || `${res.status} ${res.statusText}`
 }
 
 export async function listShipments(): Promise<Shipment[]> {

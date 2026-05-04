@@ -5,11 +5,10 @@ server {
     index index.html;
     client_max_body_size 2m;
 
-    # Docker DNS — resolve "api" lazily so nginx starts before the api container is registered.
     resolver 127.0.0.11 ipv6=off valid=10s;
 
     location /api/ {
-        set $api_upstream http://api:8080;
+        set $api_upstream http://${NGINX_API_UPSTREAM}:8080;
         proxy_pass $api_upstream$request_uri;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
