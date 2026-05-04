@@ -1,5 +1,5 @@
 .PHONY: help up down dev-api dev-web \
-	fabric-samples-precheck fabric-network fabric-deploy-chaincode fabric-setup \
+	fabric-samples-precheck fabric-network fabric-clean-ledger fabric-deploy-chaincode fabric-seed-mock fabric-setup \
 	fabric-install-hyperledger
 
 .DEFAULT_GOAL := help
@@ -54,6 +54,8 @@ help:
 	@echo "  make fabric-setup   ./network.sh up createChannel + deploy delivery chaincode"
 	@echo "  make fabric-network       only bring up test-network + channel"
 	@echo "  make fabric-deploy-chaincode   only deploy (network must be up)"
+	@echo "  make fabric-seed-mock     CLI: add mock shipments to the ledger (network + CC up)"
+	@echo "  make fabric-clean-ledger  ./network.sh down + wipe org/channel dirs on disk (then make fabric-setup)"
 	@echo ""
 	@echo "App (after fabric-setup):"
 	@echo "  make up          Build images and start api + web (Docker Compose)"
@@ -120,10 +122,27 @@ fabric-samples-precheck:
 fabric-network: fabric-samples-precheck
 	cd "$(FABRIC_TEST_NETWORK)" && ./network.sh up createChannel
 
+# Tear down test-network: removes peer/orderer containers, volumes, and generated org/channel artifacts.
+# Extra host-side rm avoids a fabric-samples edge case: stale organizations/ordererOrganizations without
+# peerOrganizations, which skips cryptogen and breaks createChannel (missing orderer TLS for configtxgen).
+fabric-clean-ledger: fabric-samples-precheck
+	cd "$(FABRIC_TEST_NETWORK)" && ./network.sh down
+	rm -rf "$(FABRIC_TEST_NETWORK)/organizations/peerOrganizations" \
+		"$(FABRIC_TEST_NETWORK)/organizations/ordererOrganizations" \
+		"$(FABRIC_TEST_NETWORK)/system-genesis-block" \
+		"$(FABRIC_TEST_NETWORK)/channel-artifacts"
+	@echo ""
+	@echo "Ledger cleared. Recreate network + chaincode: make fabric-setup   (or fabric-network then fabric-deploy-chaincode)"
+	@echo "Ignore harmless 'no such volume' lines for docker_peer0.* / docker_orderer.* if they appear (compose uses compose_* volumes)."
+
 # Deploy HashedRoute chaincode to mychannel (requires Docker + network up).
 fabric-deploy-chaincode: fabric-samples-precheck
 	@test -d "$(ROOT)/chaincode/delivery" || ( echo "Missing $(ROOT)/chaincode/delivery"; exit 1 )
 	FABRIC_TEST_NETWORK="$(FABRIC_TEST_NETWORK)" HASHEDRO_HOME="$(ROOT)" bash "$(ROOT)/scripts/deploy-chaincode.sh"
+
+# Submit mock CreateShipment / UpdateStatus txs via peer CLI (Org1 Admin).
+fabric-seed-mock: fabric-samples-precheck
+	FABRIC_TEST_NETWORK="$(FABRIC_TEST_NETWORK)" HASHEDRO_HOME="$(ROOT)" bash "$(ROOT)/scripts/seed-mock-ledger.sh"
 
 # Full setup from README §1 and §2: network + channel + delivery chaincode.
 fabric-setup: fabric-network fabric-deploy-chaincode

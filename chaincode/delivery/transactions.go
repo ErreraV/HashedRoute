@@ -86,7 +86,7 @@ func (c *DeliveryContract) ListShipments(ctx contractapi.TransactionContextInter
 	}
 	defer iter.Close()
 
-	var out []*Shipment
+	var out = make([]*Shipment, 0)
 	for iter.HasNext() {
 		kv, err := iter.Next()
 		if err != nil {

@@ -17,7 +17,7 @@ type DeliveryContract struct {
 // StatusChange records one transition in the shipment lifecycle.
 type StatusChange struct {
 	Status    string `json:"status"`
-	Notes     string `json:"notes,omitempty"`
+	Notes     string `json:"notes"`
 	Timestamp string `json:"timestamp"`
 }
 
@@ -30,6 +30,6 @@ type Shipment struct {
 	Carrier       string         `json:"carrier"`
 	CreatedAt     string         `json:"createdAt"`
 	Status        string         `json:"status"`
-	Notes         string         `json:"notes,omitempty"`
+	Notes         string         `json:"notes"`
 	StatusHistory []StatusChange `json:"statusHistory"`
 }
